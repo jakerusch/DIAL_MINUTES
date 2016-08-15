@@ -162,30 +162,14 @@ static void battery_update_proc(Layer *layer, GContext *ctx) {
   graphics_context_set_fill_color(ctx, GColorBlack);
   graphics_fill_radial(ctx, bounds, GOvalScaleModeFitCircle, 2, DEG_TO_TRIGANGLE(360-(battery_percent*3.6)), DEG_TO_TRIGANGLE(360));
   
-//   // draw battery horizontally
-//   graphics_draw_round_rect(ctx, GRect(27, 81, 14, 7), 1);
-//   int batt = battery_percent/10;
-//   graphics_fill_rect(ctx, GRect(29, 83, batt, 3), 1, GCornerNone);
-//   graphics_fill_rect(ctx, GRect(41, 83, 1, 3), 0, GCornerNone);
-  
   // draw vertical battery
   graphics_draw_round_rect(ctx, GRect(31, 77, 7, 14), 1);
   int batt = battery_percent/10;
   graphics_fill_rect(ctx, GRect(33, 89-batt, 3, batt), 1, GCornerNone);
   graphics_fill_rect(ctx, GRect(33, 76, 3, 1), 0, GCornerNone);  
   
-  // manage charging icon
-  if(s_charging_bitmap) {
-    gbitmap_destroy(s_charging_bitmap);
-    bitmap_layer_destroy(s_charging_bitmap_layer);
-  }
-  if(charging) {
-    s_charging_bitmap = gbitmap_create_with_resource(RESOURCE_ID_LIGHTENING_BLACK_ICON);
-    s_charging_bitmap_layer = bitmap_layer_create(GRect(36, 76, 14, 14));
-    bitmap_layer_set_compositing_mode(s_charging_bitmap_layer, GCompOpSet);
-    bitmap_layer_set_bitmap(s_charging_bitmap_layer, s_charging_bitmap); 
-    layer_add_child(s_dial_layer, bitmap_layer_get_layer(s_charging_bitmap_layer));  
-  }
+  // set visibility of charging icon
+  layer_set_hidden(bitmap_layer_get_layer(s_charging_bitmap_layer), charging);
 }
 
 //////////////////////////
@@ -194,8 +178,8 @@ static void battery_update_proc(Layer *layer, GContext *ctx) {
 static void health_update_proc(Layer *layer, GContext *ctx) {
   GRect bounds = GRect(54, 104, 36, 36);
   graphics_context_set_fill_color(ctx, GColorBlack);
-//   graphics_fill_radial(ctx, bounds, GOvalScaleModeFitCircle, 2, DEG_TO_TRIGANGLE(0), DEG_TO_TRIGANGLE((step_count/step_goal)*360));
-  graphics_fill_radial(ctx, bounds, GOvalScaleModeFitCircle, 2, DEG_TO_TRIGANGLE(0), DEG_TO_TRIGANGLE(360));
+  graphics_fill_radial(ctx, bounds, GOvalScaleModeFitCircle, 2, DEG_TO_TRIGANGLE(0), DEG_TO_TRIGANGLE((step_count/step_goal)*360));
+//   graphics_fill_radial(ctx, bounds, GOvalScaleModeFitCircle, 2, DEG_TO_TRIGANGLE(0), DEG_TO_TRIGANGLE(360));
 }
 
 /////////////////////////////////
@@ -280,7 +264,6 @@ static void main_window_load(Window *window) {
   // create temp text
   s_temp_layer = text_layer_create(GRect(60, 28, 24, 16));
   text_layer_set_background_color(s_temp_layer, GColorClear);
-//   text_layer_set_text_color(s_temp_layer, GColorWhite);
   text_layer_set_text_alignment(s_temp_layer, GTextAlignmentCenter);
   text_layer_set_font(s_temp_layer, s_font);
   text_layer_set_text(s_temp_layer, "100");
@@ -291,13 +274,26 @@ static void main_window_load(Window *window) {
   layer_set_update_proc(s_battery_circle, battery_update_proc);
   layer_add_child(s_dial_layer, s_battery_circle);
   
+  // charging icon
+  s_charging_bitmap = gbitmap_create_with_resource(RESOURCE_ID_LIGHTENING_BLACK_ICON);
+  s_charging_bitmap_layer = bitmap_layer_create(GRect(36, 76, 14, 14));
+  bitmap_layer_set_compositing_mode(s_charging_bitmap_layer, GCompOpSet);
+  bitmap_layer_set_bitmap(s_charging_bitmap_layer, s_charging_bitmap); 
+  layer_add_child(s_dial_layer, bitmap_layer_get_layer(s_charging_bitmap_layer));    
+  
+  // bluetooth disconnected icon
+  s_bluetooth_bitmap = gbitmap_create_with_resource(RESOURCE_ID_BLUETOOTH_DISCONNECTED_BLACK_ICON);
+  s_bluetooth_bitmap_layer = bitmap_layer_create(GRect(18, 76, 14, 14));
+  bitmap_layer_set_compositing_mode(s_bluetooth_bitmap_layer, GCompOpSet);
+  bitmap_layer_set_bitmap(s_bluetooth_bitmap_layer, s_bluetooth_bitmap); 
+  layer_add_child(s_dial_layer, bitmap_layer_get_layer(s_bluetooth_bitmap_layer));       
+  
   // create health layer text
   s_health_layer = text_layer_create(GRect(54, 108, 36, 16));
   text_layer_set_background_color(s_health_layer, GColorClear);
-//   text_layer_set_text_color(s_health_layer, GColorWhite);
   text_layer_set_text_alignment(s_health_layer, GTextAlignmentCenter);
   text_layer_set_font(s_health_layer, s_font);
-  text_layer_set_text(s_health_layer, "5000");
+//   text_layer_set_text(s_health_layer, "5000");
   layer_add_child(s_dial_layer, text_layer_get_layer(s_health_layer));  
   
   // create health layer circle
@@ -315,7 +311,6 @@ static void main_window_load(Window *window) {
   // Day Text
   s_day_text_layer = text_layer_create(GRect(88, 74, 26, 14));
   text_layer_set_background_color(s_day_text_layer, GColorClear);
-  text_layer_set_text_color(s_day_text_layer, GColorBlack);
   text_layer_set_text_alignment(s_day_text_layer, GTextAlignmentCenter);
   text_layer_set_font(s_day_text_layer, s_font);
   layer_add_child(s_dial_layer, text_layer_get_layer(s_day_text_layer));
@@ -323,7 +318,6 @@ static void main_window_load(Window *window) {
   // Date text
   s_date_text_layer = text_layer_create(GRect(113, 74, 16, 14));
   text_layer_set_background_color(s_date_text_layer, GColorClear);
-  text_layer_set_text_color(s_date_text_layer, GColorBlack);
   text_layer_set_text_alignment(s_date_text_layer, GTextAlignmentCenter);
   text_layer_set_font(s_date_text_layer, s_font);
   layer_add_child(s_dial_layer, text_layer_get_layer(s_date_text_layer));  
@@ -381,19 +375,10 @@ static void battery_handler(BatteryChargeState charge_state) {
 // manage bluetooth status //
 /////////////////////////////
 static void bluetooth_callback(bool connected) {
-  // destroy existing item
-  if(s_bluetooth_bitmap) {
-    gbitmap_destroy(s_bluetooth_bitmap);
-    bitmap_layer_destroy(s_bluetooth_bitmap_layer);    
-  }
-  if(!connected) {
-    s_bluetooth_bitmap = gbitmap_create_with_resource(RESOURCE_ID_BLUETOOTH_DISCONNECTED_BLACK_ICON);
-    s_bluetooth_bitmap_layer = bitmap_layer_create(GRect(19, 76, 14, 14));
-    bitmap_layer_set_compositing_mode(s_bluetooth_bitmap_layer, GCompOpSet);
-    bitmap_layer_set_bitmap(s_bluetooth_bitmap_layer, s_bluetooth_bitmap); 
-    layer_add_child(s_dial_layer, bitmap_layer_get_layer(s_bluetooth_bitmap_layer));      
+  layer_set_hidden(bitmap_layer_get_layer(s_bluetooth_bitmap_layer), connected);
+  if(!connected) {  
     vibes_double_pulse();
-  }
+  } 
 }
 
 // registers health update events
@@ -401,11 +386,11 @@ static void health_handler(HealthEventType event, void *context) {
   if(event==HealthEventMovementUpdate) {
     step_count = (double)health_service_sum_today(HealthMetricStepCount);
     
-//     // write to char_current_steps variable
-//     static char health_buf[16];
-//     snprintf(health_buf, sizeof(health_buf), "%d", (int)step_count);
-//     char_current_steps = health_buf;
-//     text_layer_set_text(s_health_layer, char_current_steps);
+    // write to char_current_steps variable
+    static char health_buf[16];
+    snprintf(health_buf, sizeof(health_buf), "%d", (int)step_count);
+    char_current_steps = health_buf;
+    text_layer_set_text(s_health_layer, char_current_steps);
     
     // force update to circle
     layer_mark_dirty(s_health_circle);
