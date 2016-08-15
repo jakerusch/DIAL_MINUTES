@@ -3,15 +3,21 @@
 #define KEY_ICON 1
 
 static Window *s_main_window;
-static Layer *s_dial_layer, *s_hands_layer, *s_temp_circle, *s_date_circle;
-static TextLayer *s_temp_layer, *s_date_layer;
-static BitmapLayer *s_weather_bitmap_layer;
-static GBitmap *s_weather_bitmap;
+static Layer *s_dial_layer, *s_hands_layer, *s_temp_circle, *s_battery_circle, *s_health_circle;
+static TextLayer *s_temp_layer, *s_health_layer, *s_day_text_layer, *s_date_text_layer;
+static GBitmap *s_weather_bitmap, *s_health_bitmap, *s_bluetooth_bitmap, *s_charging_bitmap, *s_bluetooth_bitmap;
+static BitmapLayer *s_weather_bitmap_layer, *s_health_bitmap_layer, *s_bluetooth_bitmap_layer, *s_charging_bitmap_layer, *s_bluetooth_bitmap_layer;
 static GPath *s_minute_arrow, *s_hour_arrow, *s_minute_filler, *s_hour_filler;
-static int buf=8;
+static int buf=8, battery_percent, step_goal=100;
 static GFont s_font;
 static char icon_layer_buf[32];
+static double step_count;
+static char *char_current_steps;
+static bool charging;
 
+//////////////////////
+// draw minute hand //
+//////////////////////
 static const GPathInfo MINUTE_HAND_POINTS = {
   5, (GPoint []) {
     {5, 16},
@@ -21,7 +27,6 @@ static const GPathInfo MINUTE_HAND_POINTS = {
     {4, -64}
   }
 };
-
 static const GPathInfo MINUTE_HAND_FILLER = {
   4, (GPoint []) {
     {2, -16},
@@ -31,6 +36,9 @@ static const GPathInfo MINUTE_HAND_FILLER = {
   }
 };
 
+////////////////////
+// draw hour hand //
+////////////////////
 static const GPathInfo HOUR_HAND_POINTS = {
   5, (GPoint []) {
     {5, 16},
@@ -40,7 +48,6 @@ static const GPathInfo HOUR_HAND_POINTS = {
     {4, -48}
   }
 };
-
 static const GPathInfo HOUR_HAND_FILLER = {
   4, (GPoint []) {
     {2, -16},
@@ -50,21 +57,27 @@ static const GPathInfo HOUR_HAND_FILLER = {
   }
 };
 
+//////////////////////
+// hide clock hands //
+//////////////////////
 static void hide_hands() {
   layer_set_hidden(s_hands_layer, true); 
 }
 
+//////////////////////
+// show clock hands //
+//////////////////////
 static void show_hands() {
   layer_set_hidden(s_hands_layer, false);
 }
 
 /////////////////////////////////////////////////
 // select click                                //
-// hides hands for 2 seconds, then shows again //
+// hides hands for 5 seconds, then shows again //
 /////////////////////////////////////////////////
 static void select_click_handler(ClickRecognizerRef recognizer, void *context) {
   hide_hands();
-  app_timer_register(2000, show_hands, NULL);
+  app_timer_register(5000, show_hands, NULL);
 }
 
 ///////////////////
@@ -98,7 +111,7 @@ static void dial_update_proc(Layer *layer, GContext *ctx) {
   graphics_context_set_stroke_width(ctx, 6);
   
   for(int i=0; i<tick_marks_number; i++) {
-    
+    // if number is divisible by 5, make large mark
     if(i%5==0) {
       graphics_context_set_stroke_width(ctx, 4);
       tick_length_start = tick_length_end-8;
@@ -121,13 +134,68 @@ static void dial_update_proc(Layer *layer, GContext *ctx) {
     
     graphics_draw_line(ctx, tick_mark_end, tick_mark_start);  
   } // end of loop 
+  
+  // draw box for day and date on right of watch
+  GRect temp_rect = GRect(87, 77, 43, 13);
+  graphics_draw_round_rect(ctx, temp_rect, 3);
+  // dividing line in date round rectange
+  GPoint start_temp_line = GPoint(114, 77);
+  GPoint end_temp_line = GPoint(114, 88);
+  graphics_draw_line(ctx, start_temp_line, end_temp_line);    
 }
 
+////////////////////////
+// update temperature //
+////////////////////////
 static void temp_update_proc(Layer *layer, GContext *ctx) {
   GPoint center = GPoint(144/2, 46);
   graphics_context_set_fill_color(ctx, GColorBlack);
   graphics_context_set_stroke_width(ctx, 1);
   graphics_draw_circle(ctx, center, 36/2);
+}
+
+///////////////////////////
+// update battery status //
+///////////////////////////
+static void battery_update_proc(Layer *layer, GContext *ctx) {
+  GRect bounds = GRect(16, 66, 36, 36);
+  graphics_context_set_fill_color(ctx, GColorBlack);
+  graphics_fill_radial(ctx, bounds, GOvalScaleModeFitCircle, 2, DEG_TO_TRIGANGLE(360-(battery_percent*3.6)), DEG_TO_TRIGANGLE(360));
+  
+//   // draw battery horizontally
+//   graphics_draw_round_rect(ctx, GRect(27, 81, 14, 7), 1);
+//   int batt = battery_percent/10;
+//   graphics_fill_rect(ctx, GRect(29, 83, batt, 3), 1, GCornerNone);
+//   graphics_fill_rect(ctx, GRect(41, 83, 1, 3), 0, GCornerNone);
+  
+  // draw vertical battery
+  graphics_draw_round_rect(ctx, GRect(31, 77, 7, 14), 1);
+  int batt = battery_percent/10;
+  graphics_fill_rect(ctx, GRect(33, 89-batt, 3, batt), 1, GCornerNone);
+  graphics_fill_rect(ctx, GRect(33, 76, 3, 1), 0, GCornerNone);  
+  
+  // manage charging icon
+  if(s_charging_bitmap) {
+    gbitmap_destroy(s_charging_bitmap);
+    bitmap_layer_destroy(s_charging_bitmap_layer);
+  }
+  if(charging) {
+    s_charging_bitmap = gbitmap_create_with_resource(RESOURCE_ID_LIGHTENING_BLACK_ICON);
+    s_charging_bitmap_layer = bitmap_layer_create(GRect(36, 76, 14, 14));
+    bitmap_layer_set_compositing_mode(s_charging_bitmap_layer, GCompOpSet);
+    bitmap_layer_set_bitmap(s_charging_bitmap_layer, s_charging_bitmap); 
+    layer_add_child(s_dial_layer, bitmap_layer_get_layer(s_charging_bitmap_layer));  
+  }
+}
+
+//////////////////////////
+// update health status //
+//////////////////////////
+static void health_update_proc(Layer *layer, GContext *ctx) {
+  GRect bounds = GRect(54, 104, 36, 36);
+  graphics_context_set_fill_color(ctx, GColorBlack);
+//   graphics_fill_radial(ctx, bounds, GOvalScaleModeFitCircle, 2, DEG_TO_TRIGANGLE(0), DEG_TO_TRIGANGLE((step_count/step_goal)*360));
+  graphics_fill_radial(ctx, bounds, GOvalScaleModeFitCircle, 2, DEG_TO_TRIGANGLE(0), DEG_TO_TRIGANGLE(360));
 }
 
 /////////////////////////////////
@@ -184,6 +252,9 @@ static void ticks_update_proc(Layer *layer, GContext *ctx) {
   graphics_fill_circle(ctx, center, 1);
 }
 
+//////////////////////
+// load main window //
+//////////////////////
 static void main_window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(window_layer);
@@ -196,23 +267,17 @@ static void main_window_load(Window *window) {
   
   s_font = fonts_get_system_font(FONT_KEY_GOTHIC_14);
 
-  //////////////////////////////////
-  // create canvas layer for dial //
-  //////////////////////////////////
+  // create canvas layer for dial
   s_dial_layer = layer_create(bounds);
   layer_set_update_proc(s_dial_layer, dial_update_proc);
   layer_add_child(window_layer, s_dial_layer);  
   
-  ////////////////////////
-  // create temp circle //
-  ////////////////////////
+  // create temp circle
   s_temp_circle = layer_create(bounds);
   layer_set_update_proc(s_temp_circle, temp_update_proc);
   layer_add_child(s_dial_layer, s_temp_circle);
   
-  //////////////////////
-  // create temp text //
-  //////////////////////
+  // create temp text
   s_temp_layer = text_layer_create(GRect(60, 28, 24, 16));
   text_layer_set_background_color(s_temp_layer, GColorClear);
 //   text_layer_set_text_color(s_temp_layer, GColorWhite);
@@ -221,48 +286,162 @@ static void main_window_load(Window *window) {
   text_layer_set_text(s_temp_layer, "100");
   layer_add_child(s_dial_layer, text_layer_get_layer(s_temp_layer));
   
-  ////////////////////////////
-  // create temp icon layer //
-  ////////////////////////////
+  // create battery layer
+  s_battery_circle = layer_create(bounds);
+  layer_set_update_proc(s_battery_circle, battery_update_proc);
+  layer_add_child(s_dial_layer, s_battery_circle);
   
+  // create health layer text
+  s_health_layer = text_layer_create(GRect(54, 108, 36, 16));
+  text_layer_set_background_color(s_health_layer, GColorClear);
+//   text_layer_set_text_color(s_health_layer, GColorWhite);
+  text_layer_set_text_alignment(s_health_layer, GTextAlignmentCenter);
+  text_layer_set_font(s_health_layer, s_font);
+  text_layer_set_text(s_health_layer, "5000");
+  layer_add_child(s_dial_layer, text_layer_get_layer(s_health_layer));  
   
-//   ///////////////////////////////////
-//   // create canvas layer for hands //
-//   ///////////////////////////////////
-//   s_hands_layer = layer_create(bounds);
-//   layer_set_update_proc(s_hands_layer, ticks_update_proc);
-//   layer_add_child(window_layer, s_hands_layer);
+  // create health layer circle
+  s_health_circle = layer_create(bounds);
+  layer_set_update_proc(s_health_circle, health_update_proc);
+  layer_add_child(s_dial_layer, s_health_circle);
+    
+  // create shoe icon
+  s_health_bitmap = gbitmap_create_with_resource(RESOURCE_ID_SHOE_BLACK_ICON);
+  s_health_bitmap_layer = bitmap_layer_create(GRect(60, 123, 24, 16));
+  bitmap_layer_set_compositing_mode(s_health_bitmap_layer, GCompOpSet);
+  bitmap_layer_set_bitmap(s_health_bitmap_layer, s_health_bitmap); 
+  layer_add_child(s_dial_layer, bitmap_layer_get_layer(s_health_bitmap_layer));
+  
+  // Day Text
+  s_day_text_layer = text_layer_create(GRect(88, 74, 26, 14));
+  text_layer_set_background_color(s_day_text_layer, GColorClear);
+  text_layer_set_text_color(s_day_text_layer, GColorBlack);
+  text_layer_set_text_alignment(s_day_text_layer, GTextAlignmentCenter);
+  text_layer_set_font(s_day_text_layer, s_font);
+  layer_add_child(s_dial_layer, text_layer_get_layer(s_day_text_layer));
+  
+  // Date text
+  s_date_text_layer = text_layer_create(GRect(113, 74, 16, 14));
+  text_layer_set_background_color(s_date_text_layer, GColorClear);
+  text_layer_set_text_color(s_date_text_layer, GColorBlack);
+  text_layer_set_text_alignment(s_date_text_layer, GTextAlignmentCenter);
+  text_layer_set_font(s_date_text_layer, s_font);
+  layer_add_child(s_dial_layer, text_layer_get_layer(s_date_text_layer));  
+    
+  // create canvas layer for hands
+  s_hands_layer = layer_create(bounds);
+  layer_set_update_proc(s_hands_layer, ticks_update_proc);
+  layer_add_child(window_layer, s_hands_layer);
 }
 
+///////////////////////
+// update clock time //
+///////////////////////
 static void update_time() {
   // get a tm strucutre
   time_t temp = time(NULL);
   struct tm *tick_time = localtime(&temp);
   
-  // write the current hours into a buffer
-  static char s_buffer[8];
-  strftime(s_buffer, sizeof(s_buffer), clock_is_24h_style() ? "%H" : "%I", tick_time);
+  // write date to buffer
+  static char date_buffer[16];
+  strftime(date_buffer, sizeof(date_buffer), "%d", tick_time);
   
-  // write the current minutes
-  static char s_buffer_small[8];
-  strftime(s_buffer_small, sizeof(s_buffer_small), "%M", tick_time);
+  // write day to buffer
+  static char day_buffer[16];
+  strftime(day_buffer, sizeof(day_buffer), "%a", tick_time);
+  
+  // display this time on the text layer
+  text_layer_set_text(s_date_text_layer, date_buffer);
+  text_layer_set_text(s_day_text_layer, day_buffer);  
 }
 
+//////////////////
+// handle ticks //
+//////////////////
 static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   layer_mark_dirty(s_hands_layer);
   update_time();
 }
 
+/////////////////////////////////////
+// registers battery update events //
+/////////////////////////////////////
+static void battery_handler(BatteryChargeState charge_state) {
+  battery_percent = charge_state.charge_percent;
+  if(charge_state.is_charging || charge_state.is_plugged) {
+    charging = true;
+  } else {
+    charging = false;
+  }
+  // force update to circle
+  layer_mark_dirty(s_battery_circle);
+}
+
+/////////////////////////////
+// manage bluetooth status //
+/////////////////////////////
+static void bluetooth_callback(bool connected) {
+  // destroy existing item
+  if(s_bluetooth_bitmap) {
+    gbitmap_destroy(s_bluetooth_bitmap);
+    bitmap_layer_destroy(s_bluetooth_bitmap_layer);    
+  }
+  if(!connected) {
+    s_bluetooth_bitmap = gbitmap_create_with_resource(RESOURCE_ID_BLUETOOTH_DISCONNECTED_BLACK_ICON);
+    s_bluetooth_bitmap_layer = bitmap_layer_create(GRect(19, 76, 14, 14));
+    bitmap_layer_set_compositing_mode(s_bluetooth_bitmap_layer, GCompOpSet);
+    bitmap_layer_set_bitmap(s_bluetooth_bitmap_layer, s_bluetooth_bitmap); 
+    layer_add_child(s_dial_layer, bitmap_layer_get_layer(s_bluetooth_bitmap_layer));      
+    vibes_double_pulse();
+  }
+}
+
+// registers health update events
+static void health_handler(HealthEventType event, void *context) {
+  if(event==HealthEventMovementUpdate) {
+    step_count = (double)health_service_sum_today(HealthMetricStepCount);
+    
+//     // write to char_current_steps variable
+//     static char health_buf[16];
+//     snprintf(health_buf, sizeof(health_buf), "%d", (int)step_count);
+//     char_current_steps = health_buf;
+//     text_layer_set_text(s_health_layer, char_current_steps);
+    
+    // force update to circle
+    layer_mark_dirty(s_health_circle);
+    
+    APP_LOG(APP_LOG_LEVEL_INFO, "health_handler completed");
+  }
+}
+
+///////////////////
+// unload window //
+///////////////////
 static void main_window_unload(Window *window) {
+  layer_destroy(s_dial_layer);
   layer_destroy(s_hands_layer);
+  layer_destroy(s_temp_circle);
+  layer_destroy(s_battery_circle);
+  layer_destroy(s_health_circle);
+  text_layer_destroy(s_temp_layer);
+  text_layer_destroy(s_health_layer);
+  text_layer_destroy(s_day_text_layer);
+  text_layer_destroy(s_date_text_layer);
+  gbitmap_destroy(s_weather_bitmap);
+  gbitmap_destroy(s_health_bitmap);
+  gbitmap_destroy(s_bluetooth_bitmap);
+  gbitmap_destroy(s_charging_bitmap);
+  gbitmap_destroy(s_bluetooth_bitmap);
+  gpath_destroy(s_minute_arrow);
+  gpath_destroy(s_hour_arrow);
+  gpath_destroy(s_minute_filler);
+  gpath_destroy(s_hour_filler);
 }
 
 //////////////////////////////////////
 // display appropriate weather icon //
 //////////////////////////////////////
-static void load_icons(Window *window) {
-  Layer *window_layer = window_get_root_layer(window);
-  
+static void load_icons() {
   // populate icon variable
     if(strcmp(icon_layer_buf, "clear-day")==0) {
       s_weather_bitmap = gbitmap_create_with_resource(RESOURCE_ID_CLEAR_SKY_DAY_BLACK_ICON);  
@@ -285,14 +464,11 @@ static void load_icons(Window *window) {
     } else if(strcmp(icon_layer_buf, "partly-cloudy-night")==0) {
       s_weather_bitmap = gbitmap_create_with_resource(RESOURCE_ID_PARTLY_CLOUDY_NIGHT_BLACK_ICON);
     }
-  
-  ///////////////////////////
-  // populate weather icon //
-  ///////////////////////////
+  // populate weather icon
   s_weather_bitmap_layer = bitmap_layer_create(GRect(60, 46, 24, 16));
   bitmap_layer_set_compositing_mode(s_weather_bitmap_layer, GCompOpSet);  
   bitmap_layer_set_bitmap(s_weather_bitmap_layer, s_weather_bitmap); 
-  layer_add_child(window_layer, bitmap_layer_get_layer(s_weather_bitmap_layer)); 
+  layer_add_child(s_dial_layer, bitmap_layer_get_layer(s_weather_bitmap_layer)); 
 }
 
 ///////////////////
@@ -321,7 +497,7 @@ static void inbox_received_callback(DictionaryIterator *iterator, void *context)
     snprintf(icon_layer_buf, sizeof(icon_layer_buf), "%s", icon_buf);    
   }  
   
-  load_icons(s_main_window);
+  load_icons();
   APP_LOG(APP_LOG_LEVEL_INFO, "inbox_received_callback");
 }
 
@@ -355,7 +531,7 @@ static void init() {
   tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
   
   // Make sure the time is displayed from the start
-  update_time(); 
+  update_time();
   
   // init hand paths
   s_minute_arrow = gpath_create(&MINUTE_HAND_POINTS);
@@ -370,7 +546,23 @@ static void init() {
   gpath_move_to(s_minute_arrow, center);
   gpath_move_to(s_minute_filler, center);
   gpath_move_to(s_hour_arrow, center);    
-  gpath_move_to(s_hour_filler, center);     
+  gpath_move_to(s_hour_filler, center);   
+    
+  // subscribe to health events 
+  health_service_events_subscribe(health_handler, NULL); 
+  // force initial update
+  health_handler(HealthEventMovementUpdate, NULL);   
+    
+  // register with Battery State Service
+  battery_state_service_subscribe(battery_handler);
+  // force initial update
+  battery_handler(battery_state_service_peek());      
+  
+  // register with bluetooth state service
+  connection_service_subscribe((ConnectionHandlers) {
+    .pebble_app_connection_handler = bluetooth_callback
+  });
+  bluetooth_callback(connection_service_peek_pebble_app_connection());  
   
   // Register weather callbacks
   app_message_register_inbox_received(inbox_received_callback);

@@ -5,7 +5,8 @@
     "name": "dial_minutes",
     "pebble": {
         "capabilities": [
-            ""
+            "location",
+            "health"
         ],
         "displayName": "DIAL_MINUTES",
         "enableMultiJS": true,
@@ -16,6 +17,24 @@
         "projectType": "native",
         "resources": {
             "media": [
+                {
+                    "file": "images/LIGHTENING_BLACK_ICON.png",
+                    "name": "LIGHTENING_BLACK_ICON",
+                    "targetPlatforms": null,
+                    "type": "bitmap"
+                },
+                {
+                    "file": "images/BLUETOOTH_DISCONNECTED_BLACK_ICON.png",
+                    "name": "BLUETOOTH_DISCONNECTED_BLACK_ICON",
+                    "targetPlatforms": null,
+                    "type": "bitmap"
+                },
+                {
+                    "file": "images/SHOE_BLACK_ICON.png",
+                    "name": "SHOE_BLACK_ICON",
+                    "targetPlatforms": null,
+                    "type": "bitmap"
+                },
                 {
                     "file": "images/WIND_BLACK_ICON.png",
                     "name": "WIND_BLACK_ICON",
@@ -80,7 +99,7 @@
         },
         "sdkVersion": "3",
         "targetPlatforms": [
-            "aplite"
+            "basalt"
         ],
         "uuid": "64a9994c-04a6-4bb3-8384-34cd96272377",
         "watchapp": {
